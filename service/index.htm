@@ -55,7 +55,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">LinkMaskirator/service/file_presenter.go (0.0%)</option>
+				<option value="file0">LinkMaskirator/service/file_presenter.go (54.5%)</option>
 				
 				<option value="file1">LinkMaskirator/service/file_producer.go (0.0%)</option>
 				
@@ -78,6 +78,7 @@
 import (
         "os"
         "strings"
+
 )
 
 type FilePresenter struct {
@@ -91,14 +92,15 @@ func NewFilePresenter(path string) *FilePresenter <span class="cov0" title="0">{
         <span class="cov0" title="0">return &amp;FilePresenter{filePath: path}</span>
 }
 
-func trimSpaces(lines []string) string <span class="cov0" title="0">{
+func trimSpaces(lines []string) string <span class="cov8" title="1">{
         var trimmed []string
-        for _, item := range lines </span><span class="cov0" title="0">{
-                if strings.TrimSpace(item) != "" </span><span class="cov0" title="0">{
-                        trimmed = append(trimmed, item)
+        for _, item := range lines </span><span class="cov8" title="1">{
+                trimmedItem := strings.TrimSpace(item)
+                if trimmedItem != "" </span><span class="cov8" title="1">{
+                        trimmed = append(trimmed, trimmedItem)
                 }</span>
         }
-        <span class="cov0" title="0">return strings.Join(trimmed, "\n")</span>
+        <span class="cov8" title="1">return strings.Join(trimmed, "\n")</span>
 }
 
 func (presenter *FilePresenter) Present(lines []string) error <span class="cov0" title="0">{
