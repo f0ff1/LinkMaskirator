@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"strings"
+
 )
 
 type FilePresenter struct {
@@ -19,8 +20,9 @@ func NewFilePresenter(path string) *FilePresenter {
 func trimSpaces(lines []string) string {
 	var trimmed []string
 	for _, item := range lines {
-		if strings.TrimSpace(item) != "" {
-			trimmed = append(trimmed, item)
+		trimmedItem := strings.TrimSpace(item)
+		if trimmedItem != "" {
+			trimmed = append(trimmed, trimmedItem)
 		}
 	}
 	return strings.Join(trimmed, "\n")
