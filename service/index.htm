@@ -1,0 +1,252 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>service: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">LinkMaskirator/service/file_presenter.go (0.0%)</option>
+				
+				<option value="file1">LinkMaskirator/service/file_producer.go (0.0%)</option>
+				
+				<option value="file2">LinkMaskirator/service/service.go (100.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package service
+
+import (
+        "os"
+        "strings"
+)
+
+type FilePresenter struct {
+        filePath string
+}
+
+func NewFilePresenter(path string) *FilePresenter <span class="cov0" title="0">{
+        if path == "" </span><span class="cov0" title="0">{
+                path = "C:/GoLand/GoCourse/LinkMaskirator/txtFiles/maskedLinks.txt"
+        }</span>
+        <span class="cov0" title="0">return &amp;FilePresenter{filePath: path}</span>
+}
+
+func trimSpaces(lines []string) string <span class="cov0" title="0">{
+        var trimmed []string
+        for _, item := range lines </span><span class="cov0" title="0">{
+                if strings.TrimSpace(item) != "" </span><span class="cov0" title="0">{
+                        trimmed = append(trimmed, item)
+                }</span>
+        }
+        <span class="cov0" title="0">return strings.Join(trimmed, "\n")</span>
+}
+
+func (presenter *FilePresenter) Present(lines []string) error <span class="cov0" title="0">{
+        data := trimSpaces(lines)
+        return os.WriteFile(presenter.filePath, []byte(data), 0644)
+
+}</span>
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package service
+
+import (
+        "bufio"
+        "os"
+)
+
+type FileProducer struct {
+        filePath string
+}
+
+func NewFileProducer(path string) *FileProducer <span class="cov0" title="0">{
+        return &amp;FileProducer{filePath: path}
+}</span>
+
+func (producer *FileProducer) Produce() ([]string, error) <span class="cov0" title="0">{
+        file, err := os.Open(producer.filePath)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">defer file.Close()
+
+        scanner := bufio.NewScanner(file)
+        var lines []string
+
+        for scanner.Scan() </span><span class="cov0" title="0">{
+                line := scanner.Text()
+                lines = append(lines, line)
+        }</span>
+
+        <span class="cov0" title="0">if err := scanner.Err(); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">return lines, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package service
+
+import (
+        "fmt"
+)
+
+type Producer interface {
+        Produce() ([]string, error)
+}
+
+type Presenter interface {
+        Present([]string) error
+}
+
+type Service struct {
+        _prod Producer
+        _pres Presenter
+}
+
+func NewService(prod Producer, pres Presenter) *Service <span class="cov8" title="1">{
+        return &amp;Service{_prod: prod, _pres: pres}
+}</span>
+
+func maskLink(message string) string <span class="cov8" title="1">{
+        result := []rune(message)
+        httpString := "http://"
+
+        httpRunes := []rune(httpString)
+
+        for i := 0; i &lt;= len(result)-len(httpRunes); i++ </span><span class="cov8" title="1">{
+                found := true
+                for j := 0; j &lt; len(httpRunes); j++ </span><span class="cov8" title="1">{
+                        if result[i+j] != httpRunes[j] </span><span class="cov8" title="1">{
+                                found = false
+                                break</span>
+                        }
+                }
+
+                <span class="cov8" title="1">if found </span><span class="cov8" title="1">{
+                        startMask := i + len(httpRunes)
+                        for j := startMask; j &lt; len(result) &amp;&amp; result[j] != ' '; j++ </span><span class="cov8" title="1">{
+                                result[j] = '*'
+                        }</span>
+                }
+
+        }
+        <span class="cov8" title="1">return string(result)</span>
+}
+
+func (s *Service) Run() error <span class="cov8" title="1">{
+        data, err := s._prod.Produce()
+        if err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">for _, item := range data </span><span class="cov8" title="1">{
+                fmt.Println(item)
+        }</span>
+
+        <span class="cov8" title="1">maskedLines := make([]string, 0, len(data))
+
+        for _, line := range data </span><span class="cov8" title="1">{
+                maskedLines = append(maskedLines, maskLink(line))
+        }</span>
+
+        <span class="cov8" title="1">err = s._pres.Present(maskedLines)
+        if err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

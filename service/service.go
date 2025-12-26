@@ -22,16 +22,23 @@ func NewService(prod Producer, pres Presenter) *Service {
 }
 
 func maskLink(message string) string {
-	result := []byte(message)
+	result := []rune(message)
 	httpString := "http://"
 
-	for i := 0; i < len(result)-len(httpString); i++ {
-		if string(result[i:i+len(httpString)]) == httpString {
-			startHttp := i + len(httpString)
-			for j := startHttp; j < len(result); j++ {
-				if result[j] == ' ' {
-					break
-				}
+	httpRunes := []rune(httpString)
+
+	for i := 0; i <= len(result)-len(httpRunes); i++ {
+		found := true
+		for j := 0; j < len(httpRunes); j++ {
+			if result[i+j] != httpRunes[j] {
+				found = false
+				break
+			}
+		}
+
+		if found {
+			startMask := i + len(httpRunes)
+			for j := startMask; j < len(result) && result[j] != ' '; j++ {
 				result[j] = '*'
 			}
 		}
@@ -50,7 +57,7 @@ func (s *Service) Run() error {
 		fmt.Println(item)
 	}
 
-	maskedLines := make([]string, len(data))
+	maskedLines := make([]string, 0, len(data))
 
 	for _, line := range data {
 		maskedLines = append(maskedLines, maskLink(line))
