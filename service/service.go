@@ -1,7 +1,9 @@
 package service
 
 import (
-	"fmt"
+	"strings"
+	"sync"
+
 )
 
 type Producer interface {
@@ -22,29 +24,40 @@ func NewService(prod Producer, pres Presenter) *Service {
 }
 
 func maskLink(message string) string {
-	result := []rune(message)
-	httpString := "http://"
+	runes := []rune(message)
+	lower := []rune(strings.ToLower(message))
 
-	httpRunes := []rune(httpString)
+	schemes := [][]rune{
+		[]rune("http://"),
+		[]rune("https://"),
+	}
 
-	for i := 0; i <= len(result)-len(httpRunes); i++ {
-		found := true
-		for j := 0; j < len(httpRunes); j++ {
-			if result[i+j] != httpRunes[j] {
-				found = false
-				break
+	for i := 0; i < len(lower); i++ {
+		for _, scheme := range schemes {
+			if i+len(scheme) > len(lower) {
+				continue
 			}
-		}
+			match := true
+			for j := range scheme {
+				if lower[i+j] != scheme[j] {
+					match = false
+					break
+				}
+			}
 
-		if found {
-			startMask := i + len(httpRunes)
-			for j := startMask; j < len(result) && result[j] != ' '; j++ {
-				result[j] = '*'
+			if !match {
+				continue
+			}
+
+			start := i + len(scheme)
+			for k := start; k < len(runes) && runes[k] != ' '; k++ {
+				runes[k] = '*'
 			}
 		}
 
 	}
-	return string(result)
+
+	return string(runes)
 }
 
 func (s *Service) Run() error {
@@ -53,20 +66,55 @@ func (s *Service) Run() error {
 		return err
 	}
 
-	for _, item := range data {
-		fmt.Println(item)
+	origLinesChan := make(chan string, len(data))
+	resultLinesChan := make(chan string, len(data))
+
+	workersCount := 10
+	// А что если у нас меньше строк? Нафига тогда 10 воркеров?
+	if workersCount > len(data) {
+		workersCount = len(data)
+	}
+	var wg sync.WaitGroup
+	wg.Add(workersCount)
+
+	for i := 0; i < workersCount; i++ {
+		go Worker(origLinesChan, resultLinesChan, &wg)
 	}
 
+	// Отправляю строки для маскировки в канал. Закрываю по завершению цикла.
+	go func() {
+		for _, line := range data {
+			origLinesChan <- line
+		}
+		close(origLinesChan)
+	}()
+
+	chanDone := make(chan bool)
 	maskedLines := make([]string, 0, len(data))
+	go func() {
+		for range data {
+			maskedLines = append(maskedLines, <-resultLinesChan)
+		}
+		chanDone <- true
+	}()
 
-	for _, line := range data {
-		maskedLines = append(maskedLines, maskLink(line))
-	}
+	wg.Wait()
+	close(resultLinesChan)
+	// Жду пока все строки наконец-то добавятся 
+	<-chanDone
 
 	err = s._pres.Present(maskedLines)
 	if err != nil {
 		return err
 	}
 	return nil
+
+}
+
+func Worker(origLinesChan <-chan string, resultLinesChan chan<- string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for orLine := range origLinesChan {
+		resultLinesChan <- maskLink(orLine)
+	}
 
 }
