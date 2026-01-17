@@ -3,7 +3,6 @@ package service
 import (
 	"strings"
 	"sync"
-
 )
 
 type Producer interface {
@@ -66,10 +65,10 @@ func (s *Service) Run() error {
 		return err
 	}
 
-	origLinesChan := make(chan string, len(data))
-	resultLinesChan := make(chan string, len(data))
-
 	workersCount := 10
+	origLinesChan := make(chan string, workersCount)
+	resultLinesChan := make(chan string, workersCount)
+
 	// А что если у нас меньше строк? Нафига тогда 10 воркеров?
 	if workersCount > len(data) {
 		workersCount = len(data)
@@ -89,19 +88,16 @@ func (s *Service) Run() error {
 		close(origLinesChan)
 	}()
 
-	chanDone := make(chan bool)
-	maskedLines := make([]string, 0, len(data))
 	go func() {
-		for resultLine := range resultLinesChan {
-			maskedLines = append(maskedLines, resultLine)
-		}
-		chanDone <- true
+		wg.Wait()
+		close(resultLinesChan)
 	}()
 
-	wg.Wait()
-	close(resultLinesChan)
-	// Жду пока все строки наконец-то добавятся
-	<-chanDone
+	maskedLines := make([]string, 0, len(data))
+
+	for resultLine := range resultLinesChan {
+		maskedLines = append(maskedLines, resultLine)
+	}
 
 	err = s._pres.Present(maskedLines)
 	if err != nil {
