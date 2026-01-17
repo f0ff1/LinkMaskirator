@@ -12,7 +12,6 @@
 11. Документация устарела, актуальная версия на http://wiki.team.internal/confluence/space.
 12. Скрипт инициализации запрашивает seed с http://bootstrap.seed-server.local/init.
 13. Финальный шаг — отправить отчет на http://audit-log-collector.corp/submit.
-
 **С 2 ссылками (25 строк):**
 14. http://start-here.dev/docs Начало здесь, а примеры кода смотрите на http://code-samples.repo/examples.
 15. Данные берутся из http://source-db.internal/feed и кэшируются на http://cache-layer.redis:6379.
@@ -41,7 +40,6 @@
 38. Обновите сертификаты для http://admin.panel.secure и http://vpn.gateway.secure.
 39. Скрипт проверяет доступность http://check-service-alfa.local/ping и http://check-service-bravo.local/ping.
 40. Ссылки в письме: основная - http://newsletter.subscribe.link, отписаться - http://newsletter.unsubscribe.link.
-
 **С 3 ссылками (12 строк):**
 41. http://first-of-three.xyz Полный workflow: после этого идите на http://second-step.xyz, затем на http://final-step.xyz.
 42. Наши ресурсы: сайт http://org.com, API http://api.org.com, документация http://docs.org.com.

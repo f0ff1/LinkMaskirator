@@ -92,15 +92,15 @@ func (s *Service) Run() error {
 	chanDone := make(chan bool)
 	maskedLines := make([]string, 0, len(data))
 	go func() {
-		for range data {
-			maskedLines = append(maskedLines, <-resultLinesChan)
+		for resultLine := range resultLinesChan {
+			maskedLines = append(maskedLines, resultLine)
 		}
 		chanDone <- true
 	}()
 
 	wg.Wait()
 	close(resultLinesChan)
-	// Жду пока все строки наконец-то добавятся 
+	// Жду пока все строки наконец-то добавятся
 	<-chanDone
 
 	err = s._pres.Present(maskedLines)
