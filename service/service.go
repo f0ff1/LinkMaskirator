@@ -2,8 +2,7 @@ package service
 
 import (
 	"strings"
-	"sync"
-
+	// "sync"
 )
 
 type Producer interface {
@@ -67,19 +66,18 @@ func (s *Service) Run() error {
 	}
 
 	workersCount := 10
-	origLinesChan := make(chan string, workersCount)
-	resultLinesChan := make(chan string, workersCount)
+	origLinesChan := make(chan string)
+	resultLinesChan := make(chan string)
 
 	// А что если у нас меньше строк? Нафига тогда 10 воркеров?
 	if workersCount > len(data) {
 		workersCount = len(data)
 	}
-	var wg sync.WaitGroup
-	var mu sync.Mutex
+	// var wg sync.WaitGroup
 
 	for i := 0; i < workersCount; i++ {
-		wg.Add(1)
-		go Worker(origLinesChan, resultLinesChan, &wg)
+		// wg.Add(1)
+		go Worker(origLinesChan, resultLinesChan)
 	}
 
 	// Отправляю строки для маскировки в канал. Закрываю по завершению цикла.
@@ -93,15 +91,13 @@ func (s *Service) Run() error {
 
 	maskedLines := make([]string, 0, len(data))
 
-	go func() {
-		for resultLine := range resultLinesChan {
-			mu.Lock()
-			maskedLines = append(maskedLines, resultLine)
-			mu.Unlock()
-		}
-	}()
+	for i := 0; i < len(data); i++ {
 
-	wg.Wait()
+		resultLine := <-resultLinesChan
+		maskedLines = append(maskedLines, resultLine)
+	}
+
+	// wg.Wait()
 	close(resultLinesChan)
 
 	err = s._pres.Present(maskedLines)
@@ -112,10 +108,16 @@ func (s *Service) Run() error {
 
 }
 
-func Worker(origLinesChan <-chan string, resultLinesChan chan<- string, wg *sync.WaitGroup) {
-	defer wg.Done()
+func Worker(origLinesChan <-chan string, resultLinesChan chan<- string) {
+	// defer wg.Done()
 	for orLine := range origLinesChan {
 		resultLinesChan <- maskLink(orLine)
 	}
 
 }
+
+///// Переделал по-другому. Убрал WaitGroup, Mutex, цикл записи в слайс тоже изменил
+///// Переделал по-другому. Убрал WaitGroup, Mutex, цикл записи в слайс тоже изменил
+///// Переделал по-другому. Убрал WaitGroup, Mutex, цикл записи в слайс тоже изменил
+///// Переделал по-другому. Убрал WaitGroup, Mutex, цикл записи в слайс тоже изменил
+///// Переделал по-другому. Убрал WaitGroup, Mutex, цикл записи в слайс тоже изменил
