@@ -3,6 +3,7 @@ package service
 import (
 	"strings"
 	"sync"
+
 )
 
 type Producer interface {
@@ -74,30 +75,34 @@ func (s *Service) Run() error {
 		workersCount = len(data)
 	}
 	var wg sync.WaitGroup
-	wg.Add(workersCount)
+	var mu sync.Mutex
 
 	for i := 0; i < workersCount; i++ {
+		wg.Add(1)
 		go Worker(origLinesChan, resultLinesChan, &wg)
 	}
 
 	// Отправляю строки для маскировки в канал. Закрываю по завершению цикла.
 	go func() {
+		defer close(origLinesChan)
 		for _, line := range data {
 			origLinesChan <- line
 		}
-		close(origLinesChan)
-	}()
 
-	go func() {
-		wg.Wait()
-		close(resultLinesChan)
 	}()
 
 	maskedLines := make([]string, 0, len(data))
 
-	for resultLine := range resultLinesChan {
-		maskedLines = append(maskedLines, resultLine)
-	}
+	go func() {
+		for resultLine := range resultLinesChan {
+			mu.Lock()
+			maskedLines = append(maskedLines, resultLine)
+			mu.Unlock()
+		}
+	}()
+
+	wg.Wait()
+	close(resultLinesChan)
 
 	err = s._pres.Present(maskedLines)
 	if err != nil {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 	"time"
 
 	"LinkMaskirator/service"
@@ -24,4 +25,5 @@ func main() {
 	fmt.Printf("В миллисекундах: %d ms\n", elapsed.Milliseconds())
 	fmt.Printf("В микросекундах: %d µs\n", elapsed.Microseconds())
 	fmt.Printf("В наносекундах: %d ns\n", elapsed.Nanoseconds())
+	fmt.Println(runtime.NumCPU())
 }
