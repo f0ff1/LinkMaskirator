@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/urfave/cli/v2"
@@ -14,6 +16,12 @@ import (
 )
 
 func main() {
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	app := &cli.App{
 		Name:     "Link Maskirator",
 		Usage:    "Программа для маскировки ссылок внутри текста",
@@ -84,9 +92,15 @@ func main() {
 				Action: maskAction,
 			},
 		},
-		//Дейцствие перед выполением любой команды
+
+		Metadata: map[string]interface{}{
+			"app_ctx": ctx,
+		},
+
+		//Действие перед выполением любой команды
 		Before: func(c *cli.Context) error {
 			//Настраиваем логгер перед выполнением команды
+
 			setupLogger(c.String("log-level"), c.Bool("json"))
 			return nil
 		},
@@ -100,11 +114,39 @@ func main() {
 		},
 	}
 
-	// Запуск приложения
-	if err := app.Run(os.Args); err != nil {
-		slog.Error("Ошибка выполнения", "error", err)
-		os.Exit(1) //Выход с кодом ошибки
+	//Запускаем приложение (с graceful shutdown)
+	var appErr error
+	appDone := make(chan struct{}, 1)
+
+	go func() {
+		defer close(appDone)
+		appErr = app.Run(os.Args)
+	}()
+
+	select {
+	case <-appDone:
+		slog.Info("приложение завершилось самостоятельно")
+	case signal := <-signalChan:
+		slog.Info("получил сигнал graceful shutdown",
+			"signal", signal.String(),
+			"time", time.Now())
+		cancel()
+		slog.Debug("контекст приложения отменен")
+		select {
+		case <-appDone:
+			slog.Info("graceful shutdown выполнен успешно")
+		case <-time.After(10 * time.Second):
+			slog.Warn("таймаут graceful shutdown (10 секунд). Завершил принудительно.")
+		}
 	}
+
+	if appErr != nil {
+		slog.Error("приложение завершено с ошибкой",
+			"error", appErr)
+		os.Exit(1)
+	}
+
+	slog.Info("приложение успешно завершено")
 
 }
 
@@ -161,22 +203,23 @@ func runMaskingProcess(ctx context.Context, inputFile, outputFile string, worker
 }
 
 func maskAction(c *cli.Context) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	appCtx, ok := c.App.Metadata["app_ctx"].(context.Context)
+	if !ok {
+		appCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(appCtx, 5*time.Second)
 	defer cancel()
-
-	slog.InfoContext(ctx, "начало маскировки",
-		"input", c.String("source"),
-		"output", c.String("dest"))
 
 	inputFile := c.String("source")
 	outputFile := c.String("dest")
 	countWorkers := c.Int("workers")
 	isSlowMode := c.Bool("slowmode")
 
-	slog.DebugContext(ctx, "DEBUG: получен флаг slowmode из CLI",
-		"slowmode", isSlowMode,
-		"raw_flag", c.String("slowmode"),
-		"is_set", c.IsSet("slowmode"))
+	slog.InfoContext(ctx, "начало маскировки",
+		"input", inputFile,
+		"output", outputFile,
+		"count workers", countWorkers,
+		"slow mode status", isSlowMode)
 
 	err := runMaskingProcess(
 		ctx,
@@ -191,7 +234,7 @@ func maskAction(c *cli.Context) error {
 			"error", err)
 
 		if ctx.Err() == context.DeadlineExceeded {
-			return cli.Exit("Превышено время ожидания (30 секунд)", 2)
+			return cli.Exit("Превышено время ожидания (5 секунд)", 2)
 		}
 		return cli.Exit(fmt.Sprintf("Ошибка маскировки: %v", err), 1)
 	}

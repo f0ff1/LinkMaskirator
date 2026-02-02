@@ -2,9 +2,13 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"strings"
+	"sync"
 	"time"
 	// "sync"
+
 )
 
 type Producer interface {
@@ -104,19 +108,20 @@ func (s *Service) Run(ctx context.Context) error {
 	if workersCount > len(data) {
 		workersCount = len(data)
 	}
-	// var wg sync.WaitGroup
+	var wg sync.WaitGroup
 
 	for i := 0; i < workersCount; i++ {
-		// wg.Add(1)
-		go s.Worker(ctx, origLinesChan, resultLinesChan)
+		wg.Add(1)
+		go s.Worker(ctx, origLinesChan, resultLinesChan, &wg)
 	}
 
-	// Отправляю строки для маскировки в канал. Закрываю по завершению цикла.
+	// Отправляю строки для маскировки в канал.
 	go func() {
 		defer close(origLinesChan)
 		for _, line := range data {
 			select {
 			case <-ctx.Done():
+				slog.DebugContext(ctx, "прекращена отправка данных для маскировки")
 				return
 			default:
 				origLinesChan <- line
@@ -127,30 +132,49 @@ func (s *Service) Run(ctx context.Context) error {
 	}()
 
 	maskedLines := make([]string, 0, len(data))
+	var collectWg sync.WaitGroup
+	collectWg.Add(1)
 
-	for i := 0; i < len(data); i++ {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case resultLine := <-resultLinesChan:
-			maskedLines = append(maskedLines, resultLine)
+	go func() {
+		defer collectWg.Done()
+		for i := 0; i < len(data); i++ {
+			select {
+			case <-ctx.Done():
+				slog.DebugContext(ctx, "прекращается отправка замаскированных данных")
+				return
+			case resultLine := <-resultLinesChan:
+				maskedLines = append(maskedLines, resultLine)
+			}
 		}
+	}()
 
-	}
-
-	// wg.Wait()
+	wg.Wait()
 	close(resultLinesChan)
 
-	err = s._pres.Present(maskedLines)
-	if err != nil {
-		return err
+	collectWg.Wait()
+
+	if len(maskedLines) > 0 {
+		if err := s._pres.Present(maskedLines); err != nil {
+			slog.DebugContext(ctx, "ошибка сохранения данных в файл", "error", err)
+			return fmt.Errorf("ошибка сохранения: %w", err)
+		}
+		slog.InfoContext(ctx, "результаты сохранены",
+			"lines_saved", len(maskedLines),
+			"total", len(data))
 	}
+
+	if ctx.Err() != nil {
+		slog.InfoContext(ctx, "обработка завершена по сигналу",
+			"reason", ctx.Err())
+		return ctx.Err()
+	}
+
 	return nil
 
 }
 
-func (s *Service) Worker(ctx context.Context, origLinesChan <-chan string, resultLinesChan chan<- string) {
-	// defer wg.Done()
+func (s *Service) Worker(ctx context.Context, origLinesChan <-chan string, resultLinesChan chan<- string, wg *sync.WaitGroup) {
+	defer wg.Done()
 	isSlowMode := s.CheckSlowMode()
 	for orLine := range origLinesChan {
 		select {
