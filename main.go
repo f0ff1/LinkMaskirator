@@ -60,7 +60,7 @@ func main() {
 			{
 				Name:    "mask",
 				Aliases: []string{"m"},
-				Usage:   "Маскировка ссылок в тексте. [-s: путь к файлу с ссылками. -d: путь к конечному файлу. -wc: количество воркеров. -sm: slowmode]",
+				Usage:   "Маскировка ссылок в тексте",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:     "source",
@@ -71,7 +71,7 @@ func main() {
 					&cli.StringFlag{
 						Name:     "dest",
 						Aliases:  []string{"d"},
-						Usage:    "Путь к конечному файлу (если не указан, по умолчанию - txtFiles/maskedLinks.txt)",
+						Usage:    "Путь к конечному файлу",
 						Value:    "C:/GoLand/GoCourse/LinkMaskirator/txtFiles/maskedLinks.txt",
 						Required: false,
 					},
@@ -86,6 +86,12 @@ func main() {
 						Aliases: []string{"sm"},
 						Value:   false,
 						Usage:   "Замедлить работу маскиратора для последующей проверки GS",
+					},
+					&cli.IntFlag{
+						Name:    "timeout",
+						Aliases: []string{"t"},
+						Value:   5,
+						Usage:   "Таймаут выполнения программы. Чаще используется в паре с --slowmode",
 					},
 				},
 
@@ -125,7 +131,7 @@ func main() {
 
 	select {
 	case <-appDone:
-		slog.Info("приложение завершилось самостоятельно")
+		slog.Info("приложение завершилось самостоятельно (Без GS)")
 	case signal := <-signalChan:
 		slog.Info("получил сигнал graceful shutdown",
 			"signal", signal.String(),
@@ -203,23 +209,29 @@ func runMaskingProcess(ctx context.Context, inputFile, outputFile string, worker
 }
 
 func maskAction(c *cli.Context) error {
-	appCtx, ok := c.App.Metadata["app_ctx"].(context.Context)
-	if !ok {
-		appCtx = context.Background()
-	}
-	ctx, cancel := context.WithTimeout(appCtx, 5*time.Second)
-	defer cancel()
-
 	inputFile := c.String("source")
 	outputFile := c.String("dest")
 	countWorkers := c.Int("workers")
 	isSlowMode := c.Bool("slowmode")
+	timeOut := c.Int("timeout")
+
+	if timeOut < 1 {
+		return fmt.Errorf("Ошибка длительности таймаута. Таймаут не может быть меньше 1 секунды")
+	}
+
+	appCtx, ok := c.App.Metadata["app_ctx"].(context.Context)
+	if !ok {
+		appCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(appCtx, time.Duration(timeOut)*time.Second)
+	defer cancel()
 
 	slog.InfoContext(ctx, "начало маскировки",
 		"input", inputFile,
 		"output", outputFile,
 		"count workers", countWorkers,
-		"slow mode status", isSlowMode)
+		"slow mode status", isSlowMode,
+		"timeout", timeOut)
 
 	err := runMaskingProcess(
 		ctx,
@@ -234,7 +246,8 @@ func maskAction(c *cli.Context) error {
 			"error", err)
 
 		if ctx.Err() == context.DeadlineExceeded {
-			return cli.Exit("Превышено время ожидания (5 секунд)", 2)
+			slog.InfoContext(ctx, "Время таймаута истекло", "timeout (s)", timeOut)
+			return cli.Exit("Превышено время ожидания", 2)
 		}
 		return cli.Exit(fmt.Sprintf("Ошибка маскировки: %v", err), 1)
 	}
