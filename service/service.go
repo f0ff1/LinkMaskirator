@@ -1,7 +1,9 @@
 package service
 
 import (
+	"context"
 	"strings"
+	"time"
 	// "sync"
 )
 
@@ -14,12 +16,37 @@ type Presenter interface {
 }
 
 type Service struct {
-	_prod Producer
-	_pres Presenter
+	_prod     Producer
+	_pres     Presenter
+	_workers  int
+	_slowmode bool
 }
 
 func NewService(prod Producer, pres Presenter) *Service {
-	return &Service{_prod: prod, _pres: pres}
+	return &Service{
+		_prod:     prod,
+		_pres:     pres,
+		_workers:  10,
+		_slowmode: false,
+	}
+}
+
+func (s *Service) SetWorkers(count int) {
+	if count > 0 {
+		s._workers = count
+	}
+}
+
+func (s *Service) GetWorkers() int {
+	return s._workers
+}
+
+func (s *Service) SetSlowMode(enabled bool) {
+	s._slowmode = enabled
+}
+
+func (s *Service) CheckSlowMode() bool {
+	return s._slowmode
 }
 
 func maskLink(message string) string {
@@ -59,13 +86,17 @@ func maskLink(message string) string {
 	return string(runes)
 }
 
-func (s *Service) Run() error {
+func (s *Service) Run(ctx context.Context) error {
 	data, err := s._prod.Produce()
 	if err != nil {
 		return err
 	}
 
-	workersCount := 10
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	workersCount := s.GetWorkers()
 	origLinesChan := make(chan string)
 	resultLinesChan := make(chan string)
 
@@ -77,14 +108,20 @@ func (s *Service) Run() error {
 
 	for i := 0; i < workersCount; i++ {
 		// wg.Add(1)
-		go Worker(origLinesChan, resultLinesChan)
+		go s.Worker(ctx, origLinesChan, resultLinesChan)
 	}
 
 	// Отправляю строки для маскировки в канал. Закрываю по завершению цикла.
 	go func() {
 		defer close(origLinesChan)
 		for _, line := range data {
-			origLinesChan <- line
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				origLinesChan <- line
+			}
+
 		}
 
 	}()
@@ -92,9 +129,13 @@ func (s *Service) Run() error {
 	maskedLines := make([]string, 0, len(data))
 
 	for i := 0; i < len(data); i++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case resultLine := <-resultLinesChan:
+			maskedLines = append(maskedLines, resultLine)
+		}
 
-		resultLine := <-resultLinesChan
-		maskedLines = append(maskedLines, resultLine)
 	}
 
 	// wg.Wait()
@@ -108,16 +149,25 @@ func (s *Service) Run() error {
 
 }
 
-func Worker(origLinesChan <-chan string, resultLinesChan chan<- string) {
+func (s *Service) Worker(ctx context.Context, origLinesChan <-chan string, resultLinesChan chan<- string) {
 	// defer wg.Done()
+	isSlowMode := s.CheckSlowMode()
 	for orLine := range origLinesChan {
-		resultLinesChan <- maskLink(orLine)
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			if isSlowMode {
+				select {
+				case <-time.After(100 * time.Millisecond):
+				case <-ctx.Done():
+					return
+				}
+			}
+			resultLinesChan <- maskLink(orLine)
+
+		}
+
 	}
 
 }
-
-///// Переделал по-другому. Убрал WaitGroup, Mutex, цикл записи в слайс тоже изменил
-///// Переделал по-другому. Убрал WaitGroup, Mutex, цикл записи в слайс тоже изменил
-///// Переделал по-другому. Убрал WaitGroup, Mutex, цикл записи в слайс тоже изменил
-///// Переделал по-другому. Убрал WaitGroup, Mutex, цикл записи в слайс тоже изменил
-///// Переделал по-другому. Убрал WaitGroup, Mutex, цикл записи в слайс тоже изменил

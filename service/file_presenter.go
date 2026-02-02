@@ -11,9 +11,6 @@ type FilePresenter struct {
 }
 
 func NewFilePresenter(path string) *FilePresenter {
-	if path == "" {
-		path = "C:/GoLand/GoCourse/LinkMaskirator/txtFiles/maskedLinks.txt"
-	}
 	return &FilePresenter{filePath: path}
 }
 
