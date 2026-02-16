@@ -33,6 +33,29 @@ func (m *MockPresenter) Present(lines []string) error {
 	return args.Error(0)
 }
 
+// Вспомогательная функция для проверки слайса без учета порядка
+func containsAll(expected ...string) func([]string) bool {
+	return func(actual []string) bool {
+		if len(actual) != len(expected) {
+			return false
+		}
+
+		// Создаем карту для отслеживания найденных элементов
+		found := make(map[string]bool)
+		for _, item := range actual {
+			found[item] = true
+		}
+
+		// Проверяем что все ожидаемые элементы найдены
+		for _, exp := range expected {
+			if !found[exp] {
+				return false
+			}
+		}
+		return true
+	}
+}
+
 // / TestNewServiceFactory - тест фабрики (добавляем slowmode)
 func TestNewServiceFactory(t *testing.T) {
 	t.Run("создание фабрики с workers и slowmode=false", func(t *testing.T) {
@@ -98,27 +121,6 @@ func TestServiceFactory_CreateMaskService(t *testing.T) {
 	})
 }
 
-// Вспомогательная функция для проверки результатов без учета порядка
-func containsAllExpectedLines(lines []string, expected ...string) bool {
-	if len(lines) != len(expected) {
-		return false
-	}
-
-	// Создаем карту для отслеживания найденных элементов
-	found := make(map[string]bool)
-	for _, line := range lines {
-		found[line] = true
-	}
-
-	// Проверяем что все ожидаемые элементы найдены
-	for _, exp := range expected {
-		if !found[exp] {
-			return false
-		}
-	}
-	return true
-}
-
 // TestService_RunWithContext - основные тесты с контекстом (добавляем slowmode)
 func TestService_RunWithContext(t *testing.T) {
 	t.Run("успешное выполнение с slowmode=false", func(t *testing.T) {
@@ -129,17 +131,18 @@ func TestService_RunWithContext(t *testing.T) {
 			"текст с http://ссылкой",
 			"еще текст https://example.com",
 		}
-		expectedOutput := []string{
-			"текст с http://*******",
-			"еще текст https://***********",
-		}
+
+		expected1 := "текст с http://*******"
+		expected2 := "еще текст https://***********"
 
 		mockProducer.On("Produce").Return(inputLines, nil)
-		mockPresenter.On("Present", expectedOutput).Return(nil)
+
+		// Используем containsAll для проверки наличия элементов без учета порядка
+		mockPresenter.On("Present", mock.MatchedBy(containsAll(expected1, expected2))).Return(nil)
 
 		service := NewService(mockProducer, mockPresenter)
 		service.SetWorkers(2)
-		service.SetSlowMode(false) // Явно выключаем slowmode
+		service.SetSlowMode(false)
 
 		ctx := context.Background()
 		err := service.Run(ctx)
@@ -166,9 +169,7 @@ func TestService_RunWithContext(t *testing.T) {
 
 		// Настраиваем первый сервис (без slowmode)
 		mockProducer1.On("Produce").Return(inputLines, nil)
-		mockPresenter1.On("Present", mock.MatchedBy(func(lines []string) bool {
-			return containsAllExpectedLines(lines, expectedHTTP, expectedHTTPS)
-		})).Return(nil)
+		mockPresenter1.On("Present", mock.MatchedBy(containsAll(expectedHTTP, expectedHTTPS))).Return(nil)
 
 		service1 := NewService(mockProducer1, mockPresenter1)
 		service1.SetWorkers(2)
@@ -176,9 +177,7 @@ func TestService_RunWithContext(t *testing.T) {
 
 		// Настраиваем второй сервис (с slowmode)
 		mockProducer2.On("Produce").Return(inputLines, nil)
-		mockPresenter2.On("Present", mock.MatchedBy(func(lines []string) bool {
-			return containsAllExpectedLines(lines, expectedHTTP, expectedHTTPS)
-		})).Return(nil)
+		mockPresenter2.On("Present", mock.MatchedBy(containsAll(expectedHTTP, expectedHTTPS))).Return(nil)
 
 		service2 := NewService(mockProducer2, mockPresenter2)
 		service2.SetWorkers(2)
@@ -206,9 +205,8 @@ func TestService_RunWithContext(t *testing.T) {
 
 		service := NewService(mockProducer, mockPresenter)
 		service.SetWorkers(1)
-		service.SetSlowMode(true) // Slowmode включен
+		service.SetSlowMode(true)
 
-		// Таймаут достаточный даже с slowmode
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		defer cancel()
 
@@ -228,20 +226,16 @@ func TestService_RunWithContext(t *testing.T) {
 
 		service := NewService(mockProducer, mockPresenter)
 		service.SetWorkers(1)
-		service.SetSlowMode(true) // Включаем slowmode
+		service.SetSlowMode(true)
 
-		// Очень короткий таймаут
 		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 		defer cancel()
 
-		// Запускаем сервис с замедлением
 		err := service.Run(ctx)
 
-		// Должен быть таймаут
 		assert.Error(t, err)
 		assert.Equal(t, context.DeadlineExceeded, err)
 
-		// Презентер не должен вызываться
 		mockPresenter.AssertNotCalled(t, "Present")
 	})
 
@@ -258,7 +252,6 @@ func TestService_RunWithContext(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		// Отменяем почти сразу
 		go func() {
 			time.Sleep(10 * time.Millisecond)
 			cancel()
@@ -288,10 +281,9 @@ func TestService_ConcurrentProcessing(t *testing.T) {
 		mockPresenter.On("Present", mock.AnythingOfType("[]string")).Return(nil)
 
 		service := NewService(mockProducer, mockPresenter)
-		service.SetWorkers(5)     // Больше чем строк
-		service.SetSlowMode(true) // Включаем slowmode
+		service.SetWorkers(5)
+		service.SetSlowMode(true)
 
-		// Даем больше времени из-за slowmode
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		defer cancel()
 
@@ -317,10 +309,7 @@ func TestService_ConcurrentProcessing(t *testing.T) {
 
 		mockProducer.On("Produce").Return(inputs, nil)
 
-		// Не проверяем точный порядок, только содержание
-		mockPresenter.On("Present", mock.MatchedBy(func(lines []string) bool {
-			return containsAllExpectedLines(lines, expectedHTTP, expectedText)
-		})).Return(nil)
+		mockPresenter.On("Present", mock.MatchedBy(containsAll(expectedHTTP, expectedText))).Return(nil)
 
 		service := NewService(mockProducer, mockPresenter)
 		service.SetSlowMode(true)
@@ -337,18 +326,14 @@ func TestService_SetSlowMode(t *testing.T) {
 	t.Run("включение и выключение slowmode", func(t *testing.T) {
 		service := NewService(nil, nil)
 
-		// По умолчанию должен быть false
 		assert.False(t, service.CheckSlowMode())
 
-		// Включаем
 		service.SetSlowMode(true)
 		assert.True(t, service.CheckSlowMode())
 
-		// Выключаем
 		service.SetSlowMode(false)
 		assert.False(t, service.CheckSlowMode())
 
-		// Снова включаем
 		service.SetSlowMode(true)
 		assert.True(t, service.CheckSlowMode())
 	})
@@ -362,7 +347,7 @@ func TestService_SetSlowMode(t *testing.T) {
 		assert.Equal(t, 1, service.GetWorkers())
 
 		service.SetWorkers(10)
-		assert.True(t, service.CheckSlowMode()) // slowmode не должен сброситься
+		assert.True(t, service.CheckSlowMode())
 		assert.Equal(t, 10, service.GetWorkers())
 	})
 }
@@ -370,7 +355,6 @@ func TestService_SetSlowMode(t *testing.T) {
 // TestService_WorkerSlowMode - тесты поведения worker с slowmode
 func TestService_WorkerSlowMode(t *testing.T) {
 	t.Run("worker с slowmode=true добавляет задержку", func(t *testing.T) {
-		// Используем реальные зависимости для интеграционного теста
 		producer := &MockProducer{}
 		presenter := &MockPresenter{}
 
@@ -382,15 +366,12 @@ func TestService_WorkerSlowMode(t *testing.T) {
 		service.SetWorkers(1)
 		service.SetSlowMode(true)
 
-		// Замеряем время выполнения
 		start := time.Now()
 		err := service.Run(context.Background())
 		elapsed := time.Since(start)
 
 		assert.NoError(t, err)
 
-		// С slowmode должно занять минимум 200ms (2 строки × 100ms)
-		// Плюс время на обработку
 		minExpected := 200 * time.Millisecond
 		assert.GreaterOrEqual(t, elapsed, minExpected,
 			"с slowmode=true выполнение должно занимать больше времени")
@@ -416,7 +397,6 @@ func TestService_WorkerSlowMode(t *testing.T) {
 
 		assert.NoError(t, err)
 
-		// Без slowmode должно быть быстро
 		maxExpected := 100 * time.Millisecond
 		assert.Less(t, elapsed, maxExpected,
 			"с slowmode=false выполнение должно быть быстрым")
@@ -432,7 +412,7 @@ func TestWorkerPool(t *testing.T) {
 		mockPresenter := new(MockPresenter)
 
 		var inputLines []string
-		for i := 0; i < 100; i++ { // Уменьшим для скорости тестов
+		for i := 0; i < 100; i++ {
 			inputLines = append(inputLines, "http://example.com")
 		}
 
@@ -455,7 +435,6 @@ func TestWorkerPool(t *testing.T) {
 		mockProducer := new(MockProducer)
 		mockPresenter := new(MockPresenter)
 
-		// Маленький набор для теста скорости
 		inputLines := []string{"line1", "line2", "line3"}
 		mockProducer.On("Produce").Return(inputLines, nil)
 		mockPresenter.On("Present", mock.Anything).Return(nil)
@@ -464,7 +443,6 @@ func TestWorkerPool(t *testing.T) {
 		service.SetWorkers(3)
 		service.SetSlowMode(true)
 
-		// Даем больше времени из-за slowmode
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		defer cancel()
 
@@ -473,7 +451,6 @@ func TestWorkerPool(t *testing.T) {
 		elapsed := time.Since(start)
 
 		assert.NoError(t, err)
-		// ИСПРАВЛЕНО: С 3 воркерами и 3 строками = 1 строка на воркера = ~100ms
 		assert.GreaterOrEqual(t, elapsed, 80*time.Millisecond)
 		assert.Less(t, elapsed, 200*time.Millisecond)
 		t.Logf("Время с 3 workers и slowmode: %v", elapsed)
@@ -493,7 +470,6 @@ func BenchmarkService_Run_WithSlowMode(b *testing.B) {
 	producer.On("Produce").Return(lines, nil)
 	presenter.On("Present", mock.Anything).Return(nil)
 
-	// Тест с slowmode=true
 	b.Run("slowmode=true", func(b *testing.B) {
 		service := NewService(producer, presenter)
 		service.SetWorkers(10)
@@ -505,7 +481,6 @@ func BenchmarkService_Run_WithSlowMode(b *testing.B) {
 		}
 	})
 
-	// Тест с slowmode=false
 	b.Run("slowmode=false", func(b *testing.B) {
 		service := NewService(producer, presenter)
 		service.SetWorkers(10)
