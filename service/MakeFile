@@ -1,0 +1,43 @@
+.PHONY: lint test check clean help
+
+# Переменные
+GOLANGCI_LINT = $(shell which golangci-lint)
+GO_TEST = go test
+
+# Цветной вывод (в Git Bash работает!)
+RED = \033[31m
+GREEN = \033[32m
+YELLOW = \033[33m
+RESET = \033[0m
+
+help:
+	@echo "Доступные команды:"
+	@echo "  make lint   - запуск golangci-lint"
+	@echo "  make test   - запуск unit-тестов"
+	@echo "  make check  - запуск линтеров и тестов"
+	@echo "  make clean  - очистка кеша"
+
+lint:
+	@echo "$(YELLOW)Запуск golangci-lint...$(RESET)"
+	@if [ -z "$(GOLANGCI_LINT)" ]; then \
+		echo "$(RED)golangci-lint не найден. Установка...$(RESET)"; \
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+	fi
+	golangci-lint run ./...
+	@echo "$(GREEN)✓ Линтер выполнен успешно$(RESET)"
+
+test:
+	@echo "$(YELLOW)Запуск unit-тестов...$(RESET)"
+	go test -v -race -coverprofile=coverage.out ./...
+	@echo "$(GREEN)✓ Тесты выполнены успешно$(RESET)"
+	@go tool cover -func=coverage.out | grep total
+
+check: lint test
+	@echo "$(GREEN)✓ Все проверки пройдены успешно$(RESET)"
+
+clean:
+	@echo "$(YELLOW)Очистка временных файлов...$(RESET)"
+	go clean -testcache
+	go clean -cache
+	rm -f coverage.out
+	@echo "$(GREEN)✓ Очистка завершена$(RESET)"

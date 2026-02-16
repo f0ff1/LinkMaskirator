@@ -52,7 +52,9 @@ func main() {
 		},
 
 		Action: func(c *cli.Context) error {
-			cli.ShowAppHelp(c)
+			if err := cli.ShowAppHelp(c); err != nil {
+				fmt.Printf("Ошибка при показе помощи: %v\n", err)
+			}
 			return nil
 		},
 
@@ -240,19 +242,19 @@ func maskAction(c *cli.Context) error {
 		countWorkers,
 		isSlowMode,
 	)
-
+	timeDeadline, _ := ctx.Deadline()
 	if err != nil {
 		slog.ErrorContext(ctx, "ошибка при маскировке",
 			"error", err)
 
 		if ctx.Err() == context.DeadlineExceeded {
-			slog.InfoContext(ctx, "Время таймаута истекло", "timeout (s)", timeOut)
+			slog.InfoContext(ctx, "Время таймаута истекло", "timeout (s)", timeOut, "ctx.Deadline()", timeDeadline)
 			return cli.Exit("Превышено время ожидания", 2)
 		}
 		return cli.Exit(fmt.Sprintf("Ошибка маскировки: %v", err), 1)
 	}
 
-	slog.InfoContext(ctx, "маскировка завершена успешно", "output file", c.String("dest"))
+	slog.InfoContext(ctx, "маскировка завершена успешно", "output file", c.String("dest"), "time left to deadline", time.Since(timeDeadline).Seconds())
 	return nil
 
 }

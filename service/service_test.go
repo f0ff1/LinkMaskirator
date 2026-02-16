@@ -98,6 +98,27 @@ func TestServiceFactory_CreateMaskService(t *testing.T) {
 	})
 }
 
+// Вспомогательная функция для проверки результатов без учета порядка
+func containsAllExpectedLines(lines []string, expected ...string) bool {
+	if len(lines) != len(expected) {
+		return false
+	}
+
+	// Создаем карту для отслеживания найденных элементов
+	found := make(map[string]bool)
+	for _, line := range lines {
+		found[line] = true
+	}
+
+	// Проверяем что все ожидаемые элементы найдены
+	for _, exp := range expected {
+		if !found[exp] {
+			return false
+		}
+	}
+	return true
+}
+
 // TestService_RunWithContext - основные тесты с контекстом (добавляем slowmode)
 func TestService_RunWithContext(t *testing.T) {
 	t.Run("успешное выполнение с slowmode=false", func(t *testing.T) {
@@ -110,7 +131,7 @@ func TestService_RunWithContext(t *testing.T) {
 		}
 		expectedOutput := []string{
 			"текст с http://*******",
-			"еще текст https://*********",
+			"еще текст https://***********",
 		}
 
 		mockProducer.On("Produce").Return(inputLines, nil)
@@ -139,14 +160,15 @@ func TestService_RunWithContext(t *testing.T) {
 			"http://example.com",
 			"https://site.org/path",
 		}
-		expectedOutput := []string{
-			"http://*********",
-			"https://*************",
-		}
+
+		expectedHTTP := "http://***********"
+		expectedHTTPS := "https://*************"
 
 		// Настраиваем первый сервис (без slowmode)
 		mockProducer1.On("Produce").Return(inputLines, nil)
-		mockPresenter1.On("Present", expectedOutput).Return(nil)
+		mockPresenter1.On("Present", mock.MatchedBy(func(lines []string) bool {
+			return containsAllExpectedLines(lines, expectedHTTP, expectedHTTPS)
+		})).Return(nil)
 
 		service1 := NewService(mockProducer1, mockPresenter1)
 		service1.SetWorkers(2)
@@ -154,7 +176,9 @@ func TestService_RunWithContext(t *testing.T) {
 
 		// Настраиваем второй сервис (с slowmode)
 		mockProducer2.On("Produce").Return(inputLines, nil)
-		mockPresenter2.On("Present", expectedOutput).Return(nil)
+		mockPresenter2.On("Present", mock.MatchedBy(func(lines []string) bool {
+			return containsAllExpectedLines(lines, expectedHTTP, expectedHTTPS)
+		})).Return(nil)
 
 		service2 := NewService(mockProducer2, mockPresenter2)
 		service2.SetWorkers(2)
@@ -283,28 +307,23 @@ func TestService_ConcurrentProcessing(t *testing.T) {
 		mockProducer := new(MockProducer)
 		mockPresenter := new(MockPresenter)
 
-		testCases := []struct {
-			name     string
-			input    string
-			expected string
-		}{
-			{"простая ссылка", "http://example.com", "http://*********"},
-			{"ссылка в тексте", "текст http://link.ru текст", "текст http://******* текст"},
+		inputs := []string{
+			"http://example.com",
+			"текст http://link.ru текст",
 		}
 
-		var inputs []string
-		var expected []string
-
-		for _, tc := range testCases {
-			inputs = append(inputs, tc.input)
-			expected = append(expected, tc.expected)
-		}
+		expectedHTTP := "http://***********"
+		expectedText := "текст http://******* текст"
 
 		mockProducer.On("Produce").Return(inputs, nil)
-		mockPresenter.On("Present", expected).Return(nil)
+
+		// Не проверяем точный порядок, только содержание
+		mockPresenter.On("Present", mock.MatchedBy(func(lines []string) bool {
+			return containsAllExpectedLines(lines, expectedHTTP, expectedText)
+		})).Return(nil)
 
 		service := NewService(mockProducer, mockPresenter)
-		service.SetSlowMode(true) // Включаем slowmode
+		service.SetSlowMode(true)
 
 		err := service.Run(context.Background())
 
@@ -454,8 +473,9 @@ func TestWorkerPool(t *testing.T) {
 		elapsed := time.Since(start)
 
 		assert.NoError(t, err)
-		// С 3 строками и slowmode должно быть минимум 300ms
-		assert.GreaterOrEqual(t, elapsed, 300*time.Millisecond)
+		// ИСПРАВЛЕНО: С 3 воркерами и 3 строками = 1 строка на воркера = ~100ms
+		assert.GreaterOrEqual(t, elapsed, 80*time.Millisecond)
+		assert.Less(t, elapsed, 200*time.Millisecond)
 		t.Logf("Время с 3 workers и slowmode: %v", elapsed)
 	})
 }

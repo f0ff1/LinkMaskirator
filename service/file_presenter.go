@@ -3,7 +3,6 @@ package service
 import (
 	"os"
 	"strings"
-
 )
 
 type FilePresenter struct {

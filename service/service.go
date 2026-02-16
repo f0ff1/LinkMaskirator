@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 	// "sync"
-
 )
 
 type Producer interface {
