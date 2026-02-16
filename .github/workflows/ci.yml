@@ -18,13 +18,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
+        #Версия го 1.24 для работы  (поменял с 1.25.4)
           go-version: '1.24'
           cache: true
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
-          version: v1.64.8
+          version: latest
           args: --timeout=5m
 
       - name: Check formatting
